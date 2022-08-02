@@ -6,6 +6,5 @@ def callback(current_prob, selection, final_prob, state):
 if __name__ == '__main__':
     ist = lost_ark.stone.simulator('97', 'relic')
 
-    history = []
     success, state = ist.simulate(callback)
     print(f'result : {success}, {state}')
