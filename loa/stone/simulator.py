@@ -7,24 +7,33 @@ from loa.stone.const import FIRST_LINE, SECOND_LINE, THIRD_LINE, SUCCESS, FAILED
 
 class simulator:
     def __init__(self, target, rating):
-        self.__callback_conf = loa.stone.const.callback_conf[target]
-        self.__stone_conf = loa.stone.const.rating_conf[rating]
-        self.__file_name = f"cache_{target}_{rating}"
-        self.__cache = {}
+        self.callback_conf = loa.stone.const.callback_conf[target]
+        self.stone_conf = loa.stone.const.rating_conf[rating]
+        self.file_name = f"cache_{target}_{rating}"
+        self.cache = {}
 
-        if os.path.exists(self.__file_name):
-            with open(self.__file_name, 'rb') as f:
-                self.__cache = pickle.load(f)
+        if os.path.exists(self.file_name):
+            with open(self.file_name, 'rb') as f:
+                self.cache = pickle.load(f)
 
     def __del__(self):
-        with open(self.__file_name, 'wb') as f:
-            pickle.dump(self.__cache, f)
+        with open(self.file_name, 'wb') as f:
+            pickle.dump(self.cache, f)
 
     def is_success(self, state):
-        return self.__callback_conf['success'](self.__stone_conf, state)
+        return self.callback_conf['success'](self.stone_conf, state)
 
     def is_failed(self, state):
-        return self.__callback_conf['failed'](self.__stone_conf, state)
+        return self.callback_conf['failed'](self.stone_conf, state)
+    
+    def result(self, state):
+        if self.is_success(state):
+            return True
+
+        if self.is_failed(state):
+            return False
+        
+        return None
 
     def fn(self, prob, selection, state):
         """ 주어진 상황에서 선택했을 때 최종적으로 목표에 달성할 수 있는 확률을 구함
@@ -33,39 +42,39 @@ class simulator:
         :param state: [(첫째줄성공횟수, 첫째줄실패횟수), (둘째줄성공횟수, 둘째줄실패횟수), (셋째줄성공횟수, 셋째줄실패횟수)]
         :return: 주어진 상황에서의 최종목표 달성 확률
         """
-        must_failed = (selection == THIRD_LINE)
+        is_debuff = (selection == THIRD_LINE)
         step = sum(success+failed for success, failed in state)
         key = f"{step}_{round(prob*100)}_{selection}/{'_'.join(f'{success}_{failed}' for success, failed in state)}"
-        if key in self.__cache:
-            return self.__cache[key]
+        if key in self.cache:
+            return self.cache[key]
 
-        if self.__callback_conf['success'](self.__stone_conf, state):
-            self.__cache[key] = 1
-            return self.__cache[key]
+        if self.callback_conf['success'](self.stone_conf, state):
+            self.cache[key] = 1
+            return self.cache[key]
 
-        if self.__callback_conf['failed'](self.__stone_conf, state):
-            self.__cache[key] = 0
-            return self.__cache[key]
+        if self.callback_conf['failed'](self.stone_conf, state):
+            self.cache[key] = 0
+            return self.cache[key]
         
-        if (sum(state[selection]) >= self.__stone_conf['chance']):
-            self.__cache[key] = 0
-            return self.__cache[key]
+        if (sum(state[selection]) >= self.stone_conf['chance']):
+            self.cache[key] = 0
+            return self.cache[key]
         
         next_states = [
             [loa.stone.const.next_state(x, True) if i == selection else x for i, x in enumerate(state)],
             [loa.stone.const.next_state(x, False) if i == selection else x for i, x in enumerate(state)]
         ]
         
-        heuristic_prob = prob if not must_failed else 1.0 - prob
-        next_state = (next_states[FAILED] if must_failed else next_states[SUCCESS], next_states[FAILED] if not must_failed else next_states[SUCCESS])
+        heuristic_prob = prob if not is_debuff else 1.0 - prob
+        next_state = (next_states[FAILED] if is_debuff else next_states[SUCCESS], next_states[FAILED] if not is_debuff else next_states[SUCCESS])
 
-        basic_prob = heuristic_prob * max(self.fn(loa.stone.const.next_prob(prob, not must_failed), i, next_state[SUCCESS]) for i in range(MAX_LINE))
-        additional_prob = (1.0 - heuristic_prob) * max(self.fn(loa.stone.const.next_prob(prob, must_failed), i, next_state[FAILED]) for i in range(MAX_LINE))
+        basic_prob = heuristic_prob * max(self.fn(loa.stone.const.next_prob(prob, not is_debuff), i, next_state[SUCCESS]) for i in range(MAX_LINE))
+        additional_prob = (1.0 - heuristic_prob) * max(self.fn(loa.stone.const.next_prob(prob, is_debuff), i, next_state[FAILED]) for i in range(MAX_LINE))
 
-        self.__cache[key] = basic_prob + additional_prob
-        return self.__cache[key]
+        self.cache[key] = basic_prob + additional_prob
+        return self.cache[key]
 
-    def simulate(self, callback=None):
+    def simulate(self):
         """ 어빌리티스톤을 세공함
         :param callback: 한번 눌렀을 때 호출될 콜백함수
         :return: (목표달성여부, 최종결과)
@@ -91,15 +100,9 @@ class simulator:
                 'result': [x for x in state]
             }
 
-            if self.is_success(state):
-                yield True, history
+            result = self.result(state)
+            yield result, history
+            if result is not None:
                 break
-
-            elif self.is_failed(state):
-                yield False, history
-                break
-
-            else:
-                yield None, history
             
             current_prob = next_prob

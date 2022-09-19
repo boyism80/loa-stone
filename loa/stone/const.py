@@ -21,50 +21,84 @@ def next_state(current_state, success):
     else:
         return (current_state[SUCCESS], current_state[FAILED]+1)
 
-def expect_value(stone_conf, success, failed):
-    return success + (stone_conf['chance'] - (success + failed))
+def expect_value(stone_conf, state_line):
+    return stone_conf['chance'] - state_line[FAILED]
+
+def is_base_success(stone_conf, state, min_success):
+    no_debuff = (expect_value(stone_conf, state[THIRD_LINE]) <= 4)
+    activated = (state[FIRST_LINE][SUCCESS] + state[SECOND_LINE][SUCCESS] >= min_success)
+
+    return no_debuff and activated
 
 def is_success_97(stone_conf, state):
-    no_debuff = (expect_value(stone_conf, *state[THIRD_LINE]) <= 4)
-    activated = (state[FIRST_LINE][SUCCESS] + state[SECOND_LINE][SUCCESS] >= 16)
+    if not is_base_success(stone_conf, state, 16):
+        return False
+
     validated = not (state[FIRST_LINE][SUCCESS] <= 8 and state[SECOND_LINE][SUCCESS] <= 8)
-    return no_debuff and activated and validated
+    if not validated:
+        return False
+
+    return True
 
 def is_success_77(stone_conf, state):
-    no_debuff = (expect_value(stone_conf, *state[THIRD_LINE]) <= 4)
-    activated = (state[FIRST_LINE][SUCCESS] + state[SECOND_LINE][SUCCESS] >= 14)
-    validated = not ((state[FIRST_LINE][SUCCESS] <= 6 and state[SECOND_LINE][SUCCESS] <= 8) or (state[SECOND_LINE][SUCCESS] <= 6 and state[FIRST_LINE][SUCCESS] <= 8))
-    return no_debuff and activated and validated
+    if not is_base_success(stone_conf, state, 14):
+        return False
 
-def is_failed_97(stone_conf, state):
+    validated = not ((state[FIRST_LINE][SUCCESS] <= 6 and state[SECOND_LINE][SUCCESS] <= 8) or (state[SECOND_LINE][SUCCESS] <= 6 and state[FIRST_LINE][SUCCESS] <= 8))
+    if not validated:
+        return False
+
+    return True
+
+def is_base_failed(stone_conf, state, amount_success):
     active_debuff = (state[THIRD_LINE][SUCCESS] >= 5)
     if active_debuff:
         return True
-
-    failed_count = (state[FIRST_LINE][FAILED] + state[SECOND_LINE][FAILED])
-    if failed_count > (stone_conf['chance'] - 8) * 2:
-        return True
-
-    if expect_value(stone_conf, *state[FIRST_LINE]) <= 8 and expect_value(stone_conf, *state[SECOND_LINE]) <= 8:
+    
+    best_success = expect_value(stone_conf, state[FIRST_LINE]) + expect_value(stone_conf, state[SECOND_LINE])
+    if best_success < amount_success:
         return True
     
     return False
 
+def is_failed_97(stone_conf, state):
+    if is_base_failed(stone_conf, state, 16):
+        return True
+
+    if expect_value(stone_conf, state[FIRST_LINE]) <= 8 and expect_value(stone_conf, state[SECOND_LINE]) <= 8:
+        return True
+
+    return False
+
 def is_failed_77(stone_conf, state):
-    active_debuff = (state[THIRD_LINE][SUCCESS] >= 5)
-    if active_debuff:
+    if is_base_failed(stone_conf, state, 14):
         return True
 
-    failed_count = (state[FIRST_LINE][FAILED] + state[SECOND_LINE][FAILED])
-    if failed_count > (stone_conf['chance'] - 7) * 2:
+    if expect_value(stone_conf, state[FIRST_LINE]) <= 6 and expect_value(stone_conf, state[SECOND_LINE]) <= 8:
+        return True
+    
+    if expect_value(stone_conf, state[FIRST_LINE]) <= 8 and expect_value(stone_conf, state[SECOND_LINE]) <= 6:
+        return True
+    
+    return False
+
+def is_success_99(stone_conf, state):
+    if not is_base_success(stone_conf, state, 18):
+        return False
+
+    return True
+
+
+def is_failed_99(stone_conf, state):
+    if is_base_failed(stone_conf, state, 18):
         return True
 
-    if expect_value(stone_conf, *state[FIRST_LINE]) <= 6 and expect_value(stone_conf, *state[SECOND_LINE]) <= 8:
+    if expect_value(stone_conf, state[FIRST_LINE]) <= 10 and expect_value(stone_conf, state[SECOND_LINE]) <= 8:
         return True
-    
-    if expect_value(stone_conf, *state[FIRST_LINE]) <= 8 and expect_value(stone_conf, *state[SECOND_LINE]) <= 6:
+
+    if expect_value(stone_conf, state[FIRST_LINE]) <= 8 and expect_value(stone_conf, state[SECOND_LINE]) <= 10:
         return True
-    
+
     return False
 
 callback_conf = {
@@ -75,11 +109,15 @@ callback_conf = {
     '77': {
         'success': is_success_77,
         'failed': is_failed_77
+    },
+    '99': {
+        'success': is_success_99,
+        'failed': is_failed_99
     }
 }
 rating_conf = {
     'rare': {'chance': 6 },
     'epic': {'chance': 8 },
-    'legendary': {'chance': 9 },
-    'relic': {'chance': 10 }
+    'legendary': {'chance': 9, 'pheon': 5 },
+    'relic': {'chance': 10, 'pheon': 9 }
 }
