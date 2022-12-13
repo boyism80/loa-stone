@@ -1,9 +1,10 @@
-import loa.stone.simulator
+import loa
 
 if __name__ == '__main__':
-    ist = loa.stone.simulator('97', 'relic')
+    ist = loa.simulator('77', 'relic')
 
     count = 0
+    success_count = 0
     while True:
         history_list = []
         for success, history in ist.simulate():
@@ -16,4 +17,8 @@ if __name__ == '__main__':
         for history in history_list:
             print(f"[{history['current prob'] * 100:6.2f}% | {history['final prob'] * 100:5.2f}%] select {history['selection']+1} => {history['result']}")
         print(f'try count : {count}')
-        break
+        count = 0
+
+        success_count = success_count + 1
+        if success_count == 100:
+            break
