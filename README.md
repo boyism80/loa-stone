@@ -4,10 +4,10 @@
 
 ## Usage
 ```
-import loa.stone.simulator
+import loa
 
 if __name__ == '__main__':
-    ist = loa.stone.simulator('97', 'relic')
+    ist = loa.simulator('77', 'relic')
 
     count = 0
     while True:
