@@ -35,7 +35,7 @@ class simulator:
         self.setting = settings[target]
         self.stone_conf = stone_conf[rating]
         self.init()
-    
+
     def is_success(self, state):
         success_amount = state[0]['success'] + state[1]['success']
         if success_amount < self.setting['amount']:
@@ -50,7 +50,7 @@ class simulator:
             return False
         
         return True
-    
+
     def is_failed(self, state):
         if state[2]['success'] > 4:
             return True
@@ -65,7 +65,7 @@ class simulator:
             return True
 
         return False
-    
+
     def result(self, state):
         if self.is_success(state):
             return True
@@ -83,7 +83,7 @@ class simulator:
         dim4 = dim3 * column + state[2]['success']
         dim5 = dim4 * column + state[2]['failed']
         return dim5 * len(success_probs) + prob_index
-    
+
     def calculate_1(self, prob_index, state):
         chance = self.stone_conf['chance']
         chance_1st = chance - (state[0]['success'] + state[0]['failed'])
@@ -109,7 +109,7 @@ class simulator:
         ])]
 
         return success + fail
-    
+
     def calculate_2(self, prob_index, state):
         chance = self.stone_conf['chance']
         chance_2nd = chance - (state[1]['success'] + state[1]['failed'])
@@ -166,10 +166,10 @@ class simulator:
         yield self.calculate_1(prob_index, state)
         yield self.calculate_2(prob_index, state)
         yield self.calculate_3(prob_index, state)
-    
+
     def stone_case_generator(self):
         chance = self.stone_conf['chance']
-        return ((success_1st, failed_1st, success_2nd, failed_2nd, success_3rd, failed_3rd, prob_index) 
+        return (([ {'success': success_1st, 'failed': failed_1st},{'success': success_2nd, 'failed': failed_2nd},{'success': success_3rd, 'failed': failed_3rd} ], prob_index)
         for success_1st in range(chance, -1, -1) 
         for failed_1st in range(chance - success_1st, -1, -1) 
         for success_2nd in range(chance, -1, -1) 
@@ -182,22 +182,7 @@ class simulator:
         size = (self.stone_conf['chance'] + 1) ** 6 * len(success_probs)
         self.cache = array.array('f', [0.0]*size)
 
-        for success_1st, failed_1st, success_2nd, failed_2nd, success_3rd, failed_3rd, prob_index in self.stone_case_generator():
-            state = [
-                {
-                    'success': success_1st,
-                    'failed': failed_1st
-                },
-                {
-                    'success': success_2nd,
-                    'failed': failed_2nd
-                },
-                {
-                    'success': success_3rd,
-                    'failed': failed_3rd
-                }
-            ]
-            
+        for state, prob_index in self.stone_case_generator():
             if self.is_success(state):
                 prob = 1.0
             elif self.is_failed(state):
