@@ -1,7 +1,7 @@
-import loa
+import loa.stone
 
 if __name__ == '__main__':
-    ist = loa.simulator('77', 'relic')
+    ist = loa.stone.simulator('77', 'relic')
 
     count = 0
     while True:
