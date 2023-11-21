@@ -1,36 +1,26 @@
+MIN_ENGRAVE_LEVEL = 3
+MAX_ENGRAVE_LEVEL = 6
+ACTIVE_ENGRAVE_LEVEL = 5
+LIMIT_ENGRAVE_LEVEL = ACTIVE_ENGRAVE_LEVEL * 3
+MAX_ACC_COUNT = 5
+
 import copy
 
-
-goal = {
+GOAL = {
     'A': 15,
     'B': 15,
     'C': 15,
     'D': 15,
     'E': 15,
-    # 'F': 10
+    'F': 5
 }
 
-based = {
+BASE = {
     'A': 12,
     'B': 12,
     'C': 9,
     'F': 7
 }
-
-MAX_VAL = 6
-ACC_TYPE = {
-    'neck': 0,
-    'ear1': 1,
-    'ear2': 2,
-    'ring1': 3,
-    'ring4': 4
-}
-
-def a2i(k, v):
-    return (ord(k) - ord('A')) * (MAX_VAL - 2) + (v - 3)
-
-def index(k, v, acc, opt):
-    return a2i(k, v) + ((a2i('F', MAX_VAL)+1)*(((4-acc)*2)+opt))
 
 def subtract(data1, data2):
     result = copy.deepcopy(data1)
@@ -46,64 +36,103 @@ def merge(*args):
     result = {}
     for data in args:
         for k, v in data.items():
-            result[k] = min(15, result[k] + v if k in result else v)
+            result[k] = min(LIMIT_ENGRAVE_LEVEL, result[k] + v if k in result else v)
     return result
 
-def visit2tuple(*visit):
-    return tuple([''.join([f'{k}{v}' for k, v in x.items()]) for x in visit])
+def hash(val):
+    if type(val) is list:
+        return ','.join(sorted([hash(x) for x in val]))
+    elif type(val) is dict:
+        return ''.join(sorted([f'{k}{v}' for k, v in val.items()]))
+    else:
+        raise Exception()
 
-def dict2tuple(val):
-    return ''.join(f'{k}{v}' for k, v in val.items())
+def possible(goal, count):
+    goal = copy.deepcopy(goal)
+    for _ in range(count):
+        if not goal:
+            return True
+        
+        min_key = min(goal, key=goal.get)
+        goal[min_key] = max(0, goal[min_key] - MIN_ENGRAVE_LEVEL)
+        if goal[min_key] == 0:
+            del goal[min_key]
 
-def search():
-    visit_ear = set()
-    visit_ring = set()
-    visits = [set(), set(), set(), set(), set()]
+        if not goal:
+            return True
+        
+        max_key = max(goal, key=goal.get)
+        goal[max_key] = max(0, goal[max_key] - MAX_ENGRAVE_LEVEL)
+        if goal[max_key] == 0:
+            del goal[max_key]
+    
+    return not goal
+
+def combination(goal, based):
+    computed = set()
+    visit = set()
+    engrave_range = [0, *range(MIN_ENGRAVE_LEVEL, MAX_ENGRAVE_LEVEL+1)]
+
     queue = [[based]]
     while queue:
         current = queue.pop(0)
-        subs = subtract(goal, merge(*current))
-        required_point = sum(subs.values())
-        maximum_point = 9*(6-len(current))
-        if required_point > maximum_point:
+        if hash(current[1:]) in visit:
             continue
-        
-        acc_count = len(current) - 1
-        if acc_count == 3:
-            prev = dict2tuple(merge(*current[:2]))
-            opt1 = dict2tuple(current[2])
-            opt2 = dict2tuple(current[3])
-            if (prev, opt2, opt1) in visit_ear:
-                continue
 
-            visit_ear.add((prev, opt1, opt2))
-        elif acc_count == 5:
-            prev = dict2tuple(merge(*current[:4]))
-            opt1 = dict2tuple(current[4])
-            opt2 = dict2tuple(current[5])
-            if (prev, opt2, opt1) in visit_ring:
-                continue
+        subs = subtract(goal, merge(*current))
+        computed_key = hash(subs)
+        if computed_key in computed:
+            continue
 
-            visit_ring.add((prev, opt1, opt2))
-
+        required_point = sum(subs.values())
+        if required_point == 0:
+            visit.add(hash(current[1:]))
             yield current[1:]
             continue
 
-        keys = list(subs.keys())
-        for k1 in keys:
-            for k2 in (k for k in keys if k is not k1):
-                for i in [0, 3, 4, 5, 6]:
-                    opt1 = dict2tuple({k1:3})
-                    opt2 = dict2tuple({k2:i})
-                    if (opt2, opt1) in visits[acc_count]:
-                        continue
+        maximum_point = (MAX_ENGRAVE_LEVEL+MIN_ENGRAVE_LEVEL)*((MAX_ACC_COUNT+1)-len(current))
+        if required_point > maximum_point:
+            continue
 
-                    visits[acc_count].add((opt1, opt2))
-                    queue.append([*current, {k1:3, k2:i}])
+        chance = (MAX_ACC_COUNT+1) - len(current)
+        if not possible(subs, chance):
+            continue
+
+        computed.add(computed_key)
+        keys = list(subs.keys())
+        if len(keys) > 1:
+            for k1, k2 in ((k1, k2) for k2 in keys for k1 in keys if k2 is not k1):
+                for i in engrave_range:
+                    opts = {k1:MIN_ENGRAVE_LEVEL, k2:i}
+                    if opts[k2] == 0:
+                        del opts[k2]
+
+                    case = [*current, opts]
+                    queue.append(case)
+        else:
+            opts = {keys[0]:MIN_ENGRAVE_LEVEL}
+            case = [*current, opts]
+            queue.append(case)
 
 if __name__ == '__main__':
-    result = list(search())
-    for x in result:
-        print(x)
+    limits = {}
+    for comb in combination(GOAL, BASE):
+        print(comb)
+        for pair in comb:
+            key = ''.join(sorted(list(pair.keys())))
+            if key not in limits:
+                limits[key] = {}
 
-    print(len(result))
+            for k, v in pair.items():
+                if k not in limits[key]:
+                    limits[key][k] = {'min': v, 'max': v}
+                else:
+                    limits[key][k]['min'] = min(limits[key][k]['min'], v)
+                    limits[key][k]['max'] = max(limits[key][k]['max'], v)
+
+    if limits:
+        print('search api')
+        for k, v in limits.items():
+            print(v)
+    else:
+        print('impossible')
