@@ -12,7 +12,7 @@ GOAL = {
     'C': 15,
     'D': 15,
     'E': 15,
-    'F': 5
+    'F': 10
 }
 
 BASE = {
@@ -114,25 +114,34 @@ def combination(goal, based):
             case = [*current, opts]
             queue.append(case)
 
-if __name__ == '__main__':
-    limits = {}
-    for comb in combination(GOAL, BASE):
-        print(comb)
+def search_pool(data):
+    result = {}
+    for comb in data:
         for pair in comb:
             key = ''.join(sorted(list(pair.keys())))
-            if key not in limits:
-                limits[key] = {}
+            if key not in result:
+                result[key] = {}
 
             for k, v in pair.items():
-                if k not in limits[key]:
-                    limits[key][k] = {'min': v, 'max': v}
+                if k not in result[key]:
+                    result[key][k] = {'min': v, 'max': v}
                 else:
-                    limits[key][k]['min'] = min(limits[key][k]['min'], v)
-                    limits[key][k]['max'] = max(limits[key][k]['max'], v)
+                    result[key][k]['min'] = min(result[key][k]['min'], v)
+                    result[key][k]['max'] = max(result[key][k]['max'], v)
 
-    if limits:
-        print('search api')
-        for k, v in limits.items():
-            print(v)
-    else:
+    return result
+
+if __name__ == '__main__':
+    pool = []
+    for comb in combination(GOAL, BASE):
+        pool.append(comb)
+        print(comb)
+
+    limits = search_pool(pool)
+    if not limits:
         print('impossible')
+        exit(0)
+    
+    print('search api')
+    for k, v in limits.items():
+        print(v)
