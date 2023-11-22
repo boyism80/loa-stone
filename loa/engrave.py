@@ -38,6 +38,9 @@ BASE = [
     }
 ]
 
+cache_option = {}
+cache_possible = {}
+
 def subtract(data1, data2):
     result = copy.deepcopy(data1)
     for k, v in data2.items():
@@ -65,9 +68,14 @@ def hash(val):
 
 def possible(goal, count):
     goal = copy.deepcopy(goal)
+    key = f"{hash(goal)}{count}"
+    if key in cache_possible:
+        return cache_possible[key]
+    
     for _ in range(count):
         if not goal:
-            return True
+            cache_possible[key] = True
+            return cache_possible[key]
         
         min_key = min(goal, key=goal.get)
         goal[min_key] = max(0, goal[min_key] - MIN_ENGRAVE_LEVEL)
@@ -82,54 +90,72 @@ def possible(goal, count):
         if goal[max_key] == 0:
             del goal[max_key]
     
-    return not goal
+    cache_possible[key] = not goal
+    return cache_possible[key]
+
+def acc_option_combine(keys):
+    key = ''.join(sorted(keys))
+    if key in cache_option:
+        return cache_option[key]
+
+    cache_option[key] = []
+    visit = set()
+    if len(keys) > 1:
+        for k1, k2 in ((k1, k2) for k1 in keys for k2 in keys if k2 is not k1):
+            for opt1 in [0, 3]:
+                for opt2 in (0, *range(MIN_ENGRAVE_LEVEL, MAX_ENGRAVE_LEVEL+1)):
+                    value = {k1: opt1, k2: opt2}
+                    for k in [x for x in value.keys() if value[x] == 0]:
+                        del value[k]
+                    if not value:
+                        continue
+                    
+                    key = hash(value)
+                    if key in visit:
+                        continue
+
+                    visit.add(key)
+                    cache_option[key].append(value)
+    else:
+        for k1 in keys:
+            for opt1 in range(MIN_ENGRAVE_LEVEL, MAX_ENGRAVE_LEVEL+1):
+                value = {k1: opt1}
+                key = hash(value)
+                if key in visit:
+                    continue
+
+                visit.add(key)
+                cache_option[key].append(value)
+    return cache_option[key]
 
 def combination(goal, based):
-    dp = set()
     visit = set()
+    queue = [(root, []) for root in based]
 
-    queue = [[x] for x in based]
     while queue:
-        current = queue.pop(0)
-        if hash(current) in visit:
+        root, accs = queue.pop(0)
+        v_key = hash([root, *accs])
+        if v_key in visit:
             continue
 
-        subs = subtract(goal, merge(*current))
-        dp_key = hash([current[0], subs])
-        if dp_key in dp:
+        subs = subtract(goal, merge(root, *accs))
+        dp_key = hash([root, subs])
+        if dp_key in visit:
             continue
 
-        required_point = sum(subs.values())
-        if required_point == 0:
-            visit.add(hash(current))
-            yield current
+        if not subs:
+            visit.add(v_key)
+            yield (root, accs)
             continue
 
-        maximum_point = (MAX_ENGRAVE_LEVEL+MIN_ENGRAVE_LEVEL)*((MAX_ACC_COUNT+1)-len(current))
-        if required_point > maximum_point:
-            visit.add(hash(current))
-            continue
-
-        chance = (MAX_ACC_COUNT+1) - len(current)
+        chance = MAX_ACC_COUNT+ - len(accs)
         if not possible(subs, chance):
-            visit.add(hash(current))
+            visit.add(v_key)
             continue
 
-        dp.add(dp_key)
-        keys = list(subs.keys())
-        if len(keys) > 1:
-            for k1, k2 in ((k1, k2) for k1 in keys for k2 in keys if k2 is not k1):
-                for opt2_level in ENGRAVE_LEVEL_RANGE:
-                    opts = {k1:MIN_ENGRAVE_LEVEL, k2:opt2_level}
-                    if opts[k2] == 0:
-                        del opts[k2]
-
-                    case = [*current, opts]
-                    queue.append(case)
-        else:
-            opts = {keys[0]:MIN_ENGRAVE_LEVEL}
-            case = [*current, opts]
-            queue.append(case)
+        visit.add(dp_key)
+        for option in acc_option_combine(subs.keys()):
+            queue.append((root, [*accs, option]))
 
 def search_pool(data):
     result = {}
@@ -148,12 +174,13 @@ def search_pool(data):
 
     return result
 
+
 if __name__ == '__main__':
     pool = []
     begin = datetime.datetime.now()
-    for comb in combination(GOAL, BASE):
-        pool.append(comb[1:])
-        print(comb)
+    for root, current in combination(GOAL, BASE):
+        pool.append(current)
+        print(hash([root, *current]))
     end = datetime.datetime.now()
     elapsed = end - begin
 
