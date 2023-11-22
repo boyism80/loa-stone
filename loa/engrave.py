@@ -1,10 +1,12 @@
+import copy
+import datetime
+
 MIN_ENGRAVE_LEVEL = 3
 MAX_ENGRAVE_LEVEL = 6
 ACTIVE_ENGRAVE_LEVEL = 5
 LIMIT_ENGRAVE_LEVEL = ACTIVE_ENGRAVE_LEVEL * 3
 MAX_ACC_COUNT = 5
-
-import copy
+ENGRAVE_LEVEL_RANGE = [0, *range(MIN_ENGRAVE_LEVEL, MAX_ENGRAVE_LEVEL+1)]
 
 GOAL = {
     'A': 15,
@@ -12,15 +14,29 @@ GOAL = {
     'C': 15,
     'D': 15,
     'E': 15,
-    'F': 10
+    'F': 5
 }
 
-BASE = {
-    'A': 12,
-    'B': 12,
-    'C': 9,
-    'F': 7
-}
+BASE = [
+    {
+        'A': 12,
+        'B': 12,
+        'C': 9,
+        'F': 7
+    },
+    {
+        'A': 12,
+        'B': 12,
+        'D': 9,
+        'F': 7
+    },
+    {
+        'A': 12,
+        'B': 12,
+        'E': 9,
+        'F': 7
+    }
+]
 
 def subtract(data1, data2):
     result = copy.deepcopy(data1)
@@ -69,41 +85,42 @@ def possible(goal, count):
     return not goal
 
 def combination(goal, based):
-    computed = set()
+    dp = set()
     visit = set()
-    engrave_range = [0, *range(MIN_ENGRAVE_LEVEL, MAX_ENGRAVE_LEVEL+1)]
 
-    queue = [[based]]
+    queue = [[x] for x in based]
     while queue:
         current = queue.pop(0)
-        if hash(current[1:]) in visit:
+        if hash(current) in visit:
             continue
 
         subs = subtract(goal, merge(*current))
-        computed_key = hash(subs)
-        if computed_key in computed:
+        dp_key = hash([current[0], subs])
+        if dp_key in dp:
             continue
 
         required_point = sum(subs.values())
         if required_point == 0:
-            visit.add(hash(current[1:]))
-            yield current[1:]
+            visit.add(hash(current))
+            yield current
             continue
 
         maximum_point = (MAX_ENGRAVE_LEVEL+MIN_ENGRAVE_LEVEL)*((MAX_ACC_COUNT+1)-len(current))
         if required_point > maximum_point:
+            visit.add(hash(current))
             continue
 
         chance = (MAX_ACC_COUNT+1) - len(current)
         if not possible(subs, chance):
+            visit.add(hash(current))
             continue
 
-        computed.add(computed_key)
+        dp.add(dp_key)
         keys = list(subs.keys())
         if len(keys) > 1:
-            for k1, k2 in ((k1, k2) for k2 in keys for k1 in keys if k2 is not k1):
-                for i in engrave_range:
-                    opts = {k1:MIN_ENGRAVE_LEVEL, k2:i}
+            for k1, k2 in ((k1, k2) for k1 in keys for k2 in keys if k2 is not k1):
+                for opt2_level in ENGRAVE_LEVEL_RANGE:
+                    opts = {k1:MIN_ENGRAVE_LEVEL, k2:opt2_level}
                     if opts[k2] == 0:
                         del opts[k2]
 
@@ -133,9 +150,12 @@ def search_pool(data):
 
 if __name__ == '__main__':
     pool = []
+    begin = datetime.datetime.now()
     for comb in combination(GOAL, BASE):
-        pool.append(comb)
+        pool.append(comb[1:])
         print(comb)
+    end = datetime.datetime.now()
+    elapsed = end - begin
 
     limits = search_pool(pool)
     if not limits:
@@ -145,3 +165,4 @@ if __name__ == '__main__':
     print('search api')
     for k, v in limits.items():
         print(v)
+    print(elapsed)
