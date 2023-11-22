@@ -94,11 +94,11 @@ def possible(goal, count):
     return cache_possible[key]
 
 def acc_option_combine(keys):
-    key = ''.join(sorted(keys))
-    if key in cache_option:
-        return cache_option[key]
+    cache_key = ''.join(sorted(keys))
+    if cache_key in cache_option:
+        return cache_option[cache_key]
 
-    cache_option[key] = []
+    cache_option[cache_key] = []
     visit = set()
     if len(keys) > 1:
         for k1, k2 in ((k1, k2) for k1 in keys for k2 in keys if k2 is not k1):
@@ -115,7 +115,7 @@ def acc_option_combine(keys):
                         continue
 
                     visit.add(key)
-                    cache_option[key].append(value)
+                    cache_option[cache_key].append(value)
     else:
         for k1 in keys:
             for opt1 in range(MIN_ENGRAVE_LEVEL, MAX_ENGRAVE_LEVEL+1):
@@ -125,8 +125,8 @@ def acc_option_combine(keys):
                     continue
 
                 visit.add(key)
-                cache_option[key].append(value)
-    return cache_option[key]
+                cache_option[cache_key].append(value)
+    return cache_option[cache_key]
 
 def combination(goal, based):
     visit = set()
