@@ -11,10 +11,10 @@ ENGRAVE_LEVEL_RANGE = [0, *range(MIN_ENGRAVE_LEVEL, MAX_ENGRAVE_LEVEL+1)]
 GOAL = {
     'A': 15,
     'B': 15,
-    'C': 15,
-    'D': 15,
-    'E': 15,
-    'F': 5
+    # 'C': 15,
+    # 'D': 15,
+    # 'E': 15,
+    # 'F': 5
 }
 
 BASE = [
@@ -129,31 +129,32 @@ def acc_option_combine(keys):
     return cache_option[cache_key]
 
 def combination(goal, based):
-    visit = set()
+    visit1 = set()
+    visit2 = set()
     queue = [(root, []) for root in based]
 
     while queue:
-        root, accs = queue.pop(0)
+        root, accs = queue.pop()
         v_key = hash([root, *accs])
-        if v_key in visit:
+        if v_key in visit2:
             continue
 
         subs = subtract(goal, merge(root, *accs))
         dp_key = hash([root, subs])
-        if dp_key in visit:
+        if dp_key in visit1:
             continue
 
         if not subs:
-            visit.add(v_key)
+            visit2.add(v_key)
             yield (root, accs)
             continue
 
         chance = MAX_ACC_COUNT+ - len(accs)
         if not possible(subs, chance):
-            visit.add(v_key)
+            visit2.add(v_key)
             continue
 
-        visit.add(dp_key)
+        visit1.add(dp_key)
         for option in acc_option_combine(subs.keys()):
             queue.append((root, [*accs, option]))
 
@@ -180,7 +181,7 @@ if __name__ == '__main__':
     begin = datetime.datetime.now()
     for root, current in combination(GOAL, BASE):
         pool.append(current)
-        print(hash([root, *current]))
+        print([root, *current])
     end = datetime.datetime.now()
     elapsed = end - begin
 
