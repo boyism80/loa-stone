@@ -303,7 +303,7 @@ def loa_api_body(category, option, engraves):
         "ItemName": None,
         "PageNo": 1,
         "SortCondition": "ASC"
-        }
+    }
 
 def accessory_combination(engrave_combination):
     queue = []
@@ -359,6 +359,12 @@ def find_items(combination, items, root):
                                            for ear2 in result['귀걸이2'] 
                                            for ring1 in result['반지1'] 
                                            for ring2 in result['반지2']):
+        if ear1 is ear2:
+            continue
+
+        if ring1 is ring2:
+            continue
+
         combo = (neck, ear1, ear2, ring1, ring2)
         penalty = merge(*[x['penalty'] for x in combo], {k:v for k, v in root.items() if k in PENALTY_MAP})
         if any(x >= ACTIVE_ENGRAVE_LEVEL for x in penalty.values()):
