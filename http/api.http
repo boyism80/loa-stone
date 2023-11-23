@@ -1,0 +1,58 @@
+###
+GET {{root}}/auctions/options
+Content-Type: application/json
+Authorization: Bearer {{ token }}
+
+
+###
+POST {{root}}/auctions/items
+Content-Type: application/json
+Authorization: Bearer {{ token }}
+
+{
+  "ItemLevelMin": 0,
+  "ItemLevelMax": 0,
+  "ItemGradeQuality": 80,
+  "SkillOptions": [
+    {
+      "FirstOption": null,
+      "SecondOption": null,
+      "MinValue": null,
+      "MaxValue": null
+    }
+  ],
+  "EtcOptions": [
+    {
+      "FirstOption": 2,
+      "SecondOption": 15,
+      "MinValue": null,
+      "MaxValue": null
+    },
+    {
+      "FirstOption": 2,
+      "SecondOption": 16,
+      "MinValue": null,
+      "MaxValue": null
+    },
+    {
+      "FirstOption": 3,
+      "SecondOption": 118,
+      "MinValue": 3,
+      "MaxValue": 3
+    },
+    {
+      "FirstOption": 3,
+      "SecondOption": 141,
+      "MinValue": 3,
+      "MaxValue": 6
+    }
+  ],
+  "Sort": "BUY_PRICE",
+  "CategoryCode": 200010,
+  "CharacterClass": null,
+  "ItemTier": 3,
+  "ItemGrade": "고대",
+  "ItemName": null,
+  "PageNo": 1,
+  "SortCondition": "ASC"
+}
