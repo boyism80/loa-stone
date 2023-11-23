@@ -369,40 +369,41 @@ def find_items(combination, items, root):
 
 if __name__ == '__main__':
     begin = datetime.datetime.now()
-    combination_e = list(engrave_combination(GOAL, BASE))
+    try:
+        combination_e = list(engrave_combination(GOAL, BASE))
 
-    combination_a = []
-    for root, current in accessory_combination(combination_e):
-        combination_a.append((root, current))
-    
-    group = search_group(combination_e)
-    if not group:
-        print('impossible')
-        exit(0)
-    
-    params = list(search_params(group, ACC_OPTIONS))
-    progress = 0
-    items = {x:{} for x in CATEGORY_MAP}
-    for category, search_result in search(params):
-        for item in search_result:
-            key_e = hash(item['engraves'])
-            if key_e not in items[category]:
-                items[category][key_e] = {}
+        combination_a = []
+        for root, current in accessory_combination(combination_e):
+            combination_a.append((root, current))
+        
+        group = search_group(combination_e)
+        if not group:
+            raise Exception('impossible')
+        
+        params = list(search_params(group, ACC_OPTIONS))
+        progress = 0
+        items = {x:{} for x in CATEGORY_MAP}
+        for category, search_result in search(params):
+            for item in search_result:
+                key_e = hash(item['engraves'])
+                if key_e not in items[category]:
+                    items[category][key_e] = {}
 
-            key_s = hash(list(item['stats'].keys()))
-            if key_s not in items[category][key_e]:
-                items[category][key_e][key_s] = []
-            
-            items[category][key_e][key_s].append(item)
+                key_s = hash(list(item['stats'].keys()))
+                if key_s not in items[category][key_e]:
+                    items[category][key_e][key_s] = []
+                
+                items[category][key_e][key_s].append(item)
 
-        progress = progress + 1
-        print(f'{progress}/{len(params)}')
+            progress = progress + 1
+            print(f'Request to loa api : {progress}/{len(params)}')
 
-    result = []
-    for x in combination_a:
-        root, combination = x
-        for x in find_items(combination, items, root):
-            print(x)
+        result = []
+        for root, combination in combination_a:
+            for x in find_items(combination, items, root):
+                print(x)
+    except Exception as e:
+        print(str(e))
 
     end = datetime.datetime.now()
     elapsed = end - begin
