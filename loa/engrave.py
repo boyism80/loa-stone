@@ -67,6 +67,12 @@ ACC_PARTS_MAP = {
     4: '반지'
 }
 
+SEARCH_OPTIONS = {
+    'ready_to_buy': True,
+    'trade_allow_count': 0,
+    'allowed_penalty': []
+}
+
 cache_option = {}
 cache_possible = {}
 
@@ -195,24 +201,21 @@ def engrave_combination(goal, based):
         for option in acc_option_combine(subs.keys()):
             queue.append((root, [*accs, option]))
 
-def search_group(data):
-    result = {}
-    for root, comb in data:
-        for pair in comb:
-            key = ''.join(sorted(list(pair.keys())))
-            if key not in result:
-                result[key] = {}
+def distinct(data):
+    visit = set()
+    for pair in (pair for _, combo in data for pair in combo):
+        key = hash(pair)
+        if key in visit:
+            continue
 
-            for k, v in pair.items():
-                if k not in result[key]:
-                    result[key][k] = {'min': v, 'max': v}
-                else:
-                    result[key][k]['min'] = min(result[key][k]['min'], v)
-                    result[key][k]['max'] = max(result[key][k]['max'], v)
+        visit.add(key)
+        yield pair
 
-    return result
+def search_params(engrave_combination, acc_options):
+    accessories = list(distinct(engrave_combination))
+    if not accessories:
+        raise Exception('impossible')
 
-def search_params(groups, acc_options):
     for category, options in acc_options.items():
         visit = set()
         for option in options:
@@ -221,8 +224,8 @@ def search_params(groups, acc_options):
                 continue
 
             visit.add(key_e)
-            for k, v in groups.items():
-                yield category, loa_api_body(category, option, v)
+            for engraves in accessories:
+                yield category, loa_api_body(category, option, engraves)
 
 def search(search_params):
     for category, params in search_params:
@@ -270,8 +273,8 @@ def loa_api_body(category, option, engraves):
         etc.append({
             "FirstOption": 3,
             "SecondOption": ENGRAVE_MAP[k],
-            "MinValue": v['min'],
-            "MaxValue": v['max']
+            "MinValue": v,
+            "MaxValue": v
         })
     
     for v in option['stats']:
@@ -305,6 +308,14 @@ def loa_api_body(category, option, engraves):
         "SortCondition": "ASC"
     }
 
+def distinct_acc_hash(engraves):
+    if len(engraves) == MAX_ACC_COUNT:
+        return ','.join([hash(engraves[0]), hash(engraves[1:3]), hash(engraves[3:5])])
+    elif len(engraves) >= 3:
+        return ','.join([hash(engraves[0]), hash(engraves[1:3]), hash(engraves[3:])])
+    else:
+        return hash(engraves, sort=False)
+
 def accessory_combination(engrave_combination):
     queue = []
     visit = set()
@@ -314,12 +325,7 @@ def accessory_combination(engrave_combination):
         
         while queue:
             root, current = queue.pop(0)
-            if len(current) == MAX_ACC_COUNT:
-                key = ','.join([hash(current[0]), hash(current[1:3]), hash(current[3:5])])
-            elif len(current) >= 3:
-                key = ','.join([hash(current[0]), hash(current[1:3]), hash(current[3:])])
-            else:
-                key = hash(current, sort=False)
+            key = hash([root, distinct_acc_hash(current)])
             if key in visit:
                 continue
 
@@ -334,24 +340,56 @@ def accessory_combination(engrave_combination):
 
                 queue.append((root, [*current, engraves]))
 
-def find_items(combination, items, root):
-    result = {}
-    for category, engrave in enumerate(combination):
-        category_name = ACC_PARTS_MAP[category]
-        if category_name not in items:
-            return
+def matched_items(items, engrave, category):
+    category_name = ACC_PARTS_MAP[category]
+    slot = 1 if category in (2, 4) else 0
+    key_e = hash(engrave)
+    if key_e not in items[category_name]:
+        return []
 
-        key_e = hash(engrave)
-        if key_e not in items[category_name]:
-            return
-        
-        slot = 1 if category in (2, 4) else 0
-        key_s = hash(ACC_OPTIONS[category_name][slot]['stats'])
-        if key_s not in items[category_name][key_e]:
-            return
-        
-        acc_key = f'{category_name}{slot+1}' if category in (1, 2, 3, 4) else category_name
-        result[acc_key] = items[category_name][key_e][key_s]
+    key_s = hash(ACC_OPTIONS[category_name][slot]['stats'])
+    if key_s not in items[category_name][key_e]:
+        return []
+    
+    return items[category_name][key_e][key_s]
+
+def candidates(combination, items, root, options):
+    queue = [[]]
+    visit = set()
+    result = {}
+    while queue:
+        current = queue.pop(0)
+        candidates = [x for x in combination if x not in current]
+        if not candidates:
+            for category, engrave in enumerate(current):
+                category_name = ACC_PARTS_MAP[category]
+                slot = 1 if category in (2, 4) else 0
+                key_e = hash(engrave)
+                key_s = hash(ACC_OPTIONS[category_name][slot]['stats'])
+                acc_key = f'{category_name}{slot+1}' if category in (1, 2, 3, 4) else category_name
+                result[acc_key] = items[category_name][key_e][key_s]
+            continue
+
+        current_key = distinct_acc_hash(current)
+        if current_key in visit:
+            continue
+        visit.add(current_key)
+
+        category = len(current)
+        if ACC_PARTS_MAP[category] not in items:
+            continue
+
+        for engrave in candidates:
+            if not matched_items(items, engrave, category):
+                continue
+
+            queue.append([*current, engrave])
+
+    if len(result) < MAX_ACC_COUNT:
+        return
+
+    if any(not result[x] for x in result):
+        return
 
     for neck, ear1, ear2, ring1, ring2 in ((neck, ear1, ear2, ring1, ring2) 
                                            for neck in result['목걸이'] 
@@ -359,57 +397,54 @@ def find_items(combination, items, root):
                                            for ear2 in result['귀걸이2'] 
                                            for ring1 in result['반지1'] 
                                            for ring2 in result['반지2']):
+
         if ear1 is ear2:
             continue
 
         if ring1 is ring2:
             continue
 
-        combo = (neck, ear1, ear2, ring1, ring2)
-        penalty = merge(*[x['penalty'] for x in combo], {k:v for k, v in root.items() if k in PENALTY_MAP})
-        if any(x >= ACTIVE_ENGRAVE_LEVEL for x in penalty.values()):
+        complete = (neck, ear1, ear2, ring1, ring2)
+        if any(x['trade count'] < options['trade_allow_count'] for x in complete):
             continue
 
-        yield combo
+        if options['ready_to_buy'] and any(x['price'] is None for x in complete):
+            continue
+
+        penalty = merge(*[x['penalty'] for x in complete], {k:v for k, v in root.items() if k in PENALTY_MAP})
+        if any(v >= ACTIVE_ENGRAVE_LEVEL for k, v in penalty.items() if k not in options['allowed_penalty']):
+            continue
+
+        yield complete
     
 
 if __name__ == '__main__':
     begin = datetime.datetime.now()
-    try:
-        combination_e = list(engrave_combination(GOAL, BASE))
+    combination_e = list(engrave_combination(GOAL, BASE))
+    combination_a = list(accessory_combination(combination_e))
+    
+    params = list(search_params(combination_e, ACC_OPTIONS))
+    progress = 0
+    items = {x:{} for x in CATEGORY_MAP}
+    for category, search_result in search(params):
+        for item in search_result:
+            key_e = hash(item['engraves'])
+            if key_e not in items[category]:
+                items[category][key_e] = {}
 
-        combination_a = []
-        for root, current in accessory_combination(combination_e):
-            combination_a.append((root, current))
-        
-        group = search_group(combination_e)
-        if not group:
-            raise Exception('impossible')
-        
-        params = list(search_params(group, ACC_OPTIONS))
-        progress = 0
-        items = {x:{} for x in CATEGORY_MAP}
-        for category, search_result in search(params):
-            for item in search_result:
-                key_e = hash(item['engraves'])
-                if key_e not in items[category]:
-                    items[category][key_e] = {}
+            key_s = hash(list(item['stats'].keys()))
+            if key_s not in items[category][key_e]:
+                items[category][key_e][key_s] = []
+            
+            items[category][key_e][key_s].append(item)
 
-                key_s = hash(list(item['stats'].keys()))
-                if key_s not in items[category][key_e]:
-                    items[category][key_e][key_s] = []
-                
-                items[category][key_e][key_s].append(item)
+        progress = progress + 1
+        print(f'Request to loa api : {progress}/{len(params)}')
 
-            progress = progress + 1
-            print(f'Request to loa api : {progress}/{len(params)}')
-
-        result = []
-        for root, combination in combination_a:
-            for x in find_items(combination, items, root):
-                print(x)
-    except Exception as e:
-        print(str(e))
+    result = []
+    for root, combination in combination_a:
+        for x in candidates(combination, items, root, SEARCH_OPTIONS):
+            print(x)
 
     end = datetime.datetime.now()
     elapsed = end - begin
