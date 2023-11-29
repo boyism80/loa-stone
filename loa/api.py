@@ -125,6 +125,9 @@ class auction_builder:
     def search(self, token):
         while True:
             response = requests.post("https://developer-lostark.game.onstove.com/auctions/items", json=self.build(), headers={'Authorization': f'Bearer {token}'})
+            if response.status_code != 200:
+                raise Exception('cannot request to lost ark auction api')
+            
             data = response.json()
             if data is not None:
                 break
