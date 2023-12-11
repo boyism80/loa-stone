@@ -22,11 +22,15 @@ BLOCK_SIZE = (BLOCK_HEIGHT, BLOCK_WIDTH)
 BLOCKS = [BLOCK_STATE_ALIVE] * BLOCK_WIDTH * BLOCK_HEIGHT
 
 class simulator:
-    def __init__(self, blocks, spirit1, spirit2, reversed_spirits):
+    def __init__(self, blocks, spirit1, spirit2, reversed_spirits, summon_chance, replace_chance):
         self.__blocks = blocks
-        self.__spirit1 = spirit1
-        self.__spirit2 = spirit2
-        self.__reversed_spirits = reversed_spirits
+        self.__spirit1 = spirit1 if spirit1 else self.random_spirit()
+        self.__spirit2 = spirit2 if spirit2 else self.random_spirit()
+        self.__active_spirit = None
+        self.__inactive_spirit = None
+        self.__reversed_spirits = reversed_spirits if reversed_spirits else (self.random_spirit(), self.random_spirit(), self.random_spirit())
+        self.__summon_chance = summon_chance
+        self.__replace_chance = replace_chance
         self.__spirit_maps = {
             'lightning_strike': self.lightning_strike,
             'lightning_strike_ex': self.lightning_strike_ex,
@@ -60,6 +64,14 @@ class simulator:
             'mesocyclone_ex': self.mesocyclone_ex,
             'mesocyclone_lgd': self.mesocyclone_lgd,
             'fountain': self.fountain
+        }
+        self.__spirit_effects = {
+            BLOCK_STATE_REPLACE: self.BLOCK_STATE_REPLACE_callback,
+            BLOCK_STATE_BLESS: self.BLOCK_STATE_BLESS_callback,
+            BLOCK_STATE_ADDITION: self.BLOCK_STATE_ADDITION_callback,
+            BLOCK_STATE_MISTERY: self.BLOCK_STATE_MISTERY_callback,
+            BLOCK_STATE_EXTENTION: self.BLOCK_STATE_EXTENTION_callback,
+            BLOCK_STATE_REPLICATION: self.BLOCK_STATE_REPLICATION_callback
         }
 
     def index(self, row, col):
@@ -117,33 +129,158 @@ class simulator:
             return None
         
         return self.index(row, col)
+    
+    def choice(self, blocks, flags):
+        for n in range(len(blocks)):
+            if (blocks[n] & flags) == flags:
+                yield n
+    
+    def BLOCK_STATE_REPLACE_callback(self, blocks):
+        shuffle = random.sample(blocks, len(blocks))
+        for i in range(len(blocks)):
+            blocks[i] = shuffle[i]
+
+    def BLOCK_STATE_BLESS_callback(self, blocks):
+        self.__summon_chance = self.__summon_chance + 1
+
+    def BLOCK_STATE_ADDITION_callback(self, blocks):
+        self.__replace_chance = self.__replace_chance + 1
+
+    def BLOCK_STATE_MISTERY_callback(self, blocks):
+        if random.random() > 0.8:
+            self.__inactive_spirit = 'world_tree'
+        else:
+            self.__inactive_spirit = 'fountain'
+
+    def root_spirit(self, spirit):
+        data = {
+            'lightning_strike': ('lightning_strike', SPIRIT_NORMAL),
+            'lightning_strike_ex': ('lightning_strike', SPIRIT_EXTEND),
+            'lightning_strike_lgd': ('lightning_strike', SPIRIT_LEGEND),
+            'lightning': ('lightning', SPIRIT_NORMAL),
+            'lightning_ex': ('lightning', SPIRIT_EXTEND),
+            'lightning_lgd': ('lightning', SPIRIT_LEGEND),
+            'hell_fire': ('hell_fire', SPIRIT_NORMAL),
+            'hell_fire_ex': ('hell_fire', SPIRIT_EXTEND),
+            'hell_fire_lgd': ('hell_fire', SPIRIT_LEGEND),
+            'tidal_wave': ('tidal_wave', SPIRIT_NORMAL),
+            'tidal_wave_ex': ('tidal_wave', SPIRIT_EXTEND),
+            'tidal_wave_lgd': ('tidal_wave', SPIRIT_LEGEND),
+            'earthquake': ('earthquake', SPIRIT_NORMAL),
+            'earthquake_ex': ('earthquake', SPIRIT_EXTEND),
+            'earthquake_lgd': ('earthquake', SPIRIT_LEGEND),
+            'explosion': ('explosion', SPIRIT_NORMAL),
+            'explosion_ex': ('explosion', SPIRIT_EXTEND),
+            'explosion_lgd': ('explosion', SPIRIT_LEGEND),
+            'cleans': ('cleans', SPIRIT_NORMAL),
+            'cleans_ex': ('cleans', SPIRIT_EXTEND),
+            'cleans_lgd': ('cleans', SPIRIT_LEGEND),
+            'world_tree': ('world_tree', SPIRIT_NORMAL),
+            'shock_wave': ('shock_wave', SPIRIT_NORMAL),
+            'shock_wave_ex': ('shock_wave', SPIRIT_EXTEND),
+            'shock_wave_lgd': ('shock_wave', SPIRIT_LEGEND),
+            'storm': ('storm', SPIRIT_NORMAL),
+            'storm_ex': ('storm', SPIRIT_EXTEND),
+            'storm_lgd': ('storm', SPIRIT_LEGEND),
+            'mesocyclone': ('mesocyclone', SPIRIT_NORMAL),
+            'mesocyclone_ex': ('mesocyclone', SPIRIT_EXTEND),
+            'mesocyclone_lgd': ('mesocyclone', SPIRIT_LEGEND),
+            'fountain': ('fountain', SPIRIT_NORMAL)
+        }
+        return data[spirit]
+
+
+    def upgrade_spirit(self, spirit):
+        ext_map = {
+            'lightning_strike': 'lightning_strike_ex',
+            'lightning_strike_ex': 'lightning_strike_lgd',
+            'lightning': 'lightning_ex',
+            'lightning_ex': 'lightning_lgd',
+            'hell_fire': 'hell_fire_ex',
+            'hell_fire_ex': 'hell_fire_lgd',
+            'tidal_wave': 'tidal_wave_ex',
+            'tidal_wave_ex': 'tidal_wave_lgd',
+            'earthquake': 'earthquake_ex',
+            'earthquake_ex': 'earthquake_lgd',
+            'explosion': 'explosion_ex',
+            'explosion_ex': 'explosion_lgd',
+            'cleans': 'cleans_ex',
+            'cleans_ex': 'cleans_lgd',
+            'shock_wave': 'shock_wave_ex',
+            'shock_wave_ex': 'shock_wave_lgd',
+            'storm': 'storm_ex',
+            'storm_ex': 'storm_lgd',
+            'mesocyclone': 'mesocyclone_ex',
+            'mesocyclone_ex': 'mesocyclone_lgd'
+        }
+        
+        if spirit in ext_map:
+            return ext_map[spirit]
+        else:
+            return spirit
+
+    def BLOCK_STATE_EXTENTION_callback(self, blocks):
+        self.__inactive_spirit = self.upgrade_spirit(self.__inactive_spirit)
+        
+    def BLOCK_STATE_REPLICATION_callback(self, blocks):
+        self.__inactive_spirit = self.__active_spirit
+
+    def random_spirit(self):
+        return random.choice(['lightning_strike', 'lightning', 'hell_fire', 'tidal_wave', 'earthquake', 'explosion', 'cleans', 'shock_wave', 'storm', 'mesocyclone'])
 
     def on_destroy_block(self, blocks, block_flags):
+        # TODO: 임의의 위치에 생성되는거 빈 칸에 생성되는건지 확인
         if (block_flags & BLOCK_STATE_DISTORTION) == BLOCK_STATE_DISTORTION:
-            for n in random.sample(list(self.alives(blocks)), 3):
+            for n in random.sample(list(self.destroyed(blocks)), 3):
                 blocks[n] = BLOCK_STATE_ALIVE
         
-        if self.is_finish(blocks):
-            return
+        for k, v in self.__spirit_effects.items():
+            if (block_flags & k) == k:
+                v(blocks)
+                break
         
-        # TODO: special block effect
+        if self.__active_spirit is self.__spirit1:
+            self.__spirit1 = self.__reversed_spirits[0]
+        else:
+            self.__spirit2 = self.__reversed_spirits[0]
+
+        while True:
+            self.__reversed_spirits = [*self.__reversed_spirits[1:], self.random_spirit()]
+            spirit1, level1 = self.root_spirit(self.__spirit1)
+            spirit2, level2 = self.root_spirit(self.__spirit2)
+            if spirit1 == spirit2:
+                if level1 >= level2:
+                    self.__spirit1 = self.upgrade_spirit(self.__spirit1)
+                    self.__spirit2 = self.__reversed_spirits[0]
+                else:
+                    self.__spirit1 = self.upgrade_spirit(self.__spirit2)
+                    self.__spirit2 = self.__reversed_spirits[0]
+            else:
+                break
+
+        for n in self.specials(blocks):
+            blocks[n] = BLOCK_STATE_ALIVE
+        
+        alive_blocks = list(self.alives(blocks))
+        if alive_blocks:
+            random_block = random.choice(alive_blocks)
+            blocks[random_block] = random.choice(list(self.__spirit_effects.keys()))
 
     def alives(self, blocks):
-        for i in range(len(blocks)):
-            if blocks[i] == BLOCK_STATE_ALIVE:
-                yield i
+        return self.choice(blocks, BLOCK_STATE_ALIVE)
 
     def destroyed(self, blocks):
         for i in range(len(blocks)):
             if blocks[i] == BLOCK_STATE_DESTROY:
                 yield i
+    
+    def specials(self, blocks):
+        for n in self.alives(blocks):
+            if blocks[n] > BLOCK_STATE_ALIVE:
+                yield n
 
     def is_finish(self, blocks):
-        for i in range(len(blocks)):
-            if (blocks[i] & BLOCK_STATE_SPIRIT) == BLOCK_STATE_SPIRIT:
-                return False
-        
-        return True
+        return not any(n for n in self.alives(blocks))
 
     def __lightning_strike(self, blocks, p, callback):
         i = self.index(*p)
@@ -384,10 +521,16 @@ class simulator:
         i = self.index(*p)
         yield (i, 1.0, SPIRIT_NORMAL)
 
-    def simulate(self, p):
-        blocks = copy.deepcopy(self.__blocks)
-        spirit_name = self.__spirit1
-        for n, prob, spirit_type in self.__spirit_maps[spirit_name](blocks, p):
+    def do(self, blocks, p):
+        if self.is_finish(blocks):
+            return True, blocks
+        
+        if self.__summon_chance == 0:
+            return False, blocks
+
+        blocks = copy.deepcopy(blocks)
+        self.__active_spirit, self.__inactive_spirit = random.sample((self.__spirit1, self.__spirit2), 2)
+        for n, prob, spirit_type in self.__spirit_maps[self.__active_spirit](blocks, p):
             if n is None:
                 continue
 
@@ -396,13 +539,34 @@ class simulator:
 
             block_flags = 0x00000000
             if blocks[n] == BLOCK_STATE_DISTORTION:
-                if spirit_type != SPIRIT_LEGEND and spirit_name not in ('cleans', 'cleans_ex', 'cleans_lgd', 'world_wood'):
+                if spirit_type != SPIRIT_LEGEND and self.__active_spirit not in ('cleans', 'cleans_ex', 'cleans_lgd', 'world_wood'):
                     block_flags = block_flags | BLOCK_STATE_DISTORTION
+            else:
+                block_flags = block_flags | blocks[n]
             blocks[n] = BLOCK_STATE_DESTROY
 
         self.on_destroy_block(blocks, block_flags)
-        return blocks
+        self.__active_spirit = self.__inactive_spirit = None
+        self.__summon_chance = self.__summon_chance - 1
+        if self.is_finish(blocks):
+            return True, blocks
+        
+        return None, blocks
+    
+    def simulation(self):
+        blocks = self.__blocks
+        while True:
+            n = random.choice(list(self.alives(blocks)))
+            success, blocks = self.do(blocks, self.position(n))
+            if success is not None:
+                return success, blocks
 
 if __name__ == '__main__':
-    ist = simulator(BLOCKS, 'world_tree', 'fountain', ('lightning', 'lightning_strike', 'hell_fire'))
-    print(ist.simulate((2, 2)))
+    while True:
+        ist = simulator(BLOCKS, None, None, None, 7, 3)
+        success, blocks = ist.simulation()
+        if success:
+            break
+    
+    print(success)
+    print(blocks)
