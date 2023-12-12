@@ -22,15 +22,14 @@ BLOCK_SIZE = (BLOCK_HEIGHT, BLOCK_WIDTH)
 BLOCKS = [BLOCK_STATE_ALIVE] * BLOCK_WIDTH * BLOCK_HEIGHT
 
 class simulator:
-    def __init__(self, blocks, spirit1, spirit2, reversed_spirits, summon_chance, replace_chance):
+    def __init__(self, blocks, spirits, reversed_spirits, summon_chance, change_chance):
         self.__blocks = blocks
-        self.__spirit1 = spirit1 if spirit1 else self.random_spirit()
-        self.__spirit2 = spirit2 if spirit2 else self.random_spirit()
+        self.__spirits = copy.deepcopy(spirits) if spirits else [self.random_spirit(), self.random_spirit()]
         self.__active_spirit = None
         self.__inactive_spirit = None
-        self.__reversed_spirits = reversed_spirits if reversed_spirits else (self.random_spirit(), self.random_spirit(), self.random_spirit())
+        self.__reserved_spirits = reversed_spirits if reversed_spirits else (self.random_spirit(), self.random_spirit(), self.random_spirit())
         self.__summon_chance = summon_chance
-        self.__replace_chance = replace_chance
+        self.__change_chance = change_chance
         self.__spirit_maps = {
             'lightning_strike': self.lightning_strike,
             'lightning_strike_ex': self.lightning_strike_ex,
@@ -73,6 +72,7 @@ class simulator:
             BLOCK_STATE_EXTENTION: self.BLOCK_STATE_EXTENTION_callback,
             BLOCK_STATE_REPLICATION: self.BLOCK_STATE_REPLICATION_callback
         }
+        self.__queue = []
 
     def index(self, row, col):
         rows, cols = BLOCK_SIZE
@@ -144,7 +144,7 @@ class simulator:
         self.__summon_chance = self.__summon_chance + 1
 
     def BLOCK_STATE_ADDITION_callback(self, blocks):
-        self.__replace_chance = self.__replace_chance + 1
+        self.__change_chance = self.__change_chance + 1
 
     def BLOCK_STATE_MISTERY_callback(self, blocks):
         if random.random() > 0.8:
@@ -227,7 +227,26 @@ class simulator:
 
     def random_spirit(self):
         return random.choice(['lightning_strike', 'lightning', 'hell_fire', 'tidal_wave', 'earthquake', 'explosion', 'cleans', 'shock_wave', 'storm', 'mesocyclone'])
+    
+    def spirit_change(self, spirit, free=False):
+        i = 0 if spirit is self.__spirits[0] else 1
+        while True:
+            self.__spirits[i] = self.__reserved_spirits[0]
+            self.__reserved_spirits = [*self.__reserved_spirits[1:], self.random_spirit()]
 
+            spirit1, level1 = self.root_spirit(self.__spirits[0])
+            spirit2, level2 = self.root_spirit(self.__spirits[1])
+            if spirit1 == spirit2:
+                if level1 >= level2:
+                    self.__spirits[0] = self.upgrade_spirit(self.__spirits[0])
+                else:
+                    self.__spirits[0] = self.upgrade_spirit(self.__spirits[1])
+                i = 1
+            else:
+                break
+        if not free:
+            self.__change_chance = self.__change_chance - 1
+    
     def on_destroy_block(self, blocks, block_flags):
         # TODO: 임의의 위치에 생성되는거 빈 칸에 생성되는건지 확인
         if (block_flags & BLOCK_STATE_DISTORTION) == BLOCK_STATE_DISTORTION:
@@ -238,25 +257,8 @@ class simulator:
             if (block_flags & k) == k:
                 v(blocks)
                 break
-        
-        if self.__active_spirit is self.__spirit1:
-            self.__spirit1 = self.__reversed_spirits[0]
-        else:
-            self.__spirit2 = self.__reversed_spirits[0]
 
-        while True:
-            self.__reversed_spirits = [*self.__reversed_spirits[1:], self.random_spirit()]
-            spirit1, level1 = self.root_spirit(self.__spirit1)
-            spirit2, level2 = self.root_spirit(self.__spirit2)
-            if spirit1 == spirit2:
-                if level1 >= level2:
-                    self.__spirit1 = self.upgrade_spirit(self.__spirit1)
-                    self.__spirit2 = self.__reversed_spirits[0]
-                else:
-                    self.__spirit1 = self.upgrade_spirit(self.__spirit2)
-                    self.__spirit2 = self.__reversed_spirits[0]
-            else:
-                break
+        self.spirit_change(self.__active_spirit, True)
 
         for n in self.specials(blocks):
             blocks[n] = BLOCK_STATE_ALIVE
@@ -521,6 +523,18 @@ class simulator:
         i = self.index(*p)
         yield (i, 1.0, SPIRIT_NORMAL)
 
+    def record(self, blocks):
+        self.__queue.append({
+            'blocks': copy.deepcopy(blocks),
+            'spirits': copy.deepcopy(self.__spirits),
+            'reserved_spirits': copy.deepcopy(self.__reserved_spirits),
+            'change_chance': self.__change_chance,
+            'summon_chance': self.__summon_chance
+        })
+
+    def history(self):
+        return self.__queue
+
     def do(self, blocks, p):
         if self.is_finish(blocks):
             return True, blocks
@@ -529,7 +543,7 @@ class simulator:
             return False, blocks
 
         blocks = copy.deepcopy(blocks)
-        self.__active_spirit, self.__inactive_spirit = random.sample((self.__spirit1, self.__spirit2), 2)
+        self.__active_spirit, self.__inactive_spirit = random.sample(self.__spirits, len(self.__spirits))
         for n, prob, spirit_type in self.__spirit_maps[self.__active_spirit](blocks, p):
             if n is None:
                 continue
@@ -556,17 +570,29 @@ class simulator:
     def simulation(self):
         blocks = self.__blocks
         while True:
-            n = random.choice(list(self.alives(blocks)))
-            success, blocks = self.do(blocks, self.position(n))
-            if success is not None:
-                return success, blocks
+            if self.is_finish(blocks):
+                return True, blocks
+            
+            self.record(blocks)
+            candidates = list(self.alives(blocks))
+            if self.__change_chance > 0:
+                candidates = candidates + [*self.__spirits]
+            n = random.choice(candidates)
+            if n in self.__spirits:
+                self.spirit_change(n)
+            else:
+                success, blocks = self.do(blocks, self.position(n))
+                if success is not None:
+                    return success, blocks
 
 if __name__ == '__main__':
+    count = 0
     while True:
-        ist = simulator(BLOCKS, None, None, None, 7, 3)
+        count = count + 1
+        ist = simulator(BLOCKS, None, None, 7, 3)
         success, blocks = ist.simulation()
         if success:
             break
     
-    print(success)
-    print(blocks)
+    print(count)
+    print(ist.history())
