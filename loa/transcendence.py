@@ -1,6 +1,5 @@
 import copy
 import random
-import uuid
 from itertools import product, combinations
 
 BLOCK_STATE_DESTROY     = 0x00000000
@@ -22,16 +21,30 @@ BLOCK_WIDTH = 2
 BLOCK_HEIGHT = 2
 BLOCK_SIZE = (BLOCK_HEIGHT, BLOCK_WIDTH)
 BLOCKS = [BLOCK_STATE_ALIVE] * BLOCK_WIDTH * BLOCK_HEIGHT
-BLOCKS[1] = BLOCK_STATE_DISTORTION
+# BLOCKS[1] = BLOCK_STATE_DISTORTION
+
+BLOCK_KEYS = {
+    BLOCK_STATE_DESTROY:     1,
+    BLOCK_STATE_SPIRIT:      2,
+    BLOCK_STATE_ALIVE:       3,
+    BLOCK_STATE_REPLACE:     4,
+    BLOCK_STATE_BLESS:       5,
+    BLOCK_STATE_ADDITION:    6,
+    BLOCK_STATE_MISTERY:     7,
+    BLOCK_STATE_EXTENTION:   8,
+    BLOCK_STATE_REPLICATION: 9,
+    BLOCK_STATE_DISTORTION:  10
+}
+
+DP = {}
 
 class simulator:
     def __init__(self, blocks, spirits, reversed_spirits, summon_chance, change_chance):
-        self.id = str(uuid.uuid4())
         self.__blocks = copy.deepcopy(blocks)
-        self.__spirits = copy.deepcopy(spirits) if spirits else [self.random_spirit(), self.random_spirit()]
+        self.__spirits = copy.deepcopy(spirits) if spirits is not None else [self.random_spirit(), self.random_spirit()]
         self.__active_spirit = None
         self.__inactive_spirit = None
-        self.__reserved_spirits = reversed_spirits if reversed_spirits else (self.random_spirit(), self.random_spirit(), self.random_spirit())
+        self.__reserved_spirits = copy.deepcopy(reversed_spirits) if reversed_spirits is not None else [self.random_spirit(), self.random_spirit(), self.random_spirit()]
         self.__summon_chance = summon_chance
         self.__change_chance = change_chance
         self.__spirit_maps = {
@@ -77,6 +90,13 @@ class simulator:
             BLOCK_STATE_REPLICATION: self.BLOCK_STATE_REPLICATION_callback
         }
         self.__queue = []
+    
+    def key(self):
+        block_key = ','.join(f'{BLOCK_KEYS[x]}' for x in self.__blocks)
+        chance_key = f'{self.__summon_chance}:{self.__change_chance}'
+        spirit_keys = ','.join((*self.__spirits, *self.__reserved_spirits))
+
+        return '&'.join((block_key, chance_key, spirit_keys))
 
     def index(self, row, col):
         rows, cols = BLOCK_SIZE
@@ -237,7 +257,7 @@ class simulator:
         self.__inactive_spirit = self.__active_spirit
 
     def random_spirit_candidates(self):
-        return ('lightning_strike', 'lightning', 'hell_fire', 'tidal_wave', 'earthquake', 'explosion', 'cleans', 'shock_wave', 'storm', 'mesocyclone')
+        return ['lightning_strike', 'lightning', 'hell_fire', 'tidal_wave', 'earthquake', 'explosion', 'cleans', 'shock_wave', 'storm', 'mesocyclone']
 
     def random_spirit(self):
         return random.choice(self.random_spirit_candidates())
@@ -250,7 +270,7 @@ class simulator:
 
             spirit1, level1 = self.root_spirit(self.__spirits[0])
             spirit2, level2 = self.root_spirit(self.__spirits[1])
-            if spirit1 == spirit2:
+            if spirit1 == spirit2 and level1 != SPIRIT_LEGEND and level2 != SPIRIT_LEGEND:
                 if level1 >= level2:
                     self.__spirits[0] = self.upgrade_spirit(self.__spirits[0])
                 else:
@@ -619,10 +639,29 @@ class simulator:
             yield ist
     
     def spirit_change_cases(self, active_spirit):
-        for next_spirit in self.random_spirit_candidates():
-            ist = self.clone()
-            ist.spirit_change(active_spirit, next_spirit)
-            yield ist
+        ist = self.clone()
+        i = 0 if ist.__spirits[0] is active_spirit else 1
+        ist.__spirits[i] = ist.__reserved_spirits.pop(0)
+
+        queue = [ist.clone()]
+        while queue:
+            current = queue.pop(0)
+            for added_spirit in ist.random_spirit_candidates():
+                current.__reserved_spirits.append(added_spirit)
+
+                spirit1, level1 = current.root_spirit(current.__spirits[0])
+                spirit2, level2 = current.root_spirit(current.__spirits[1])
+                if spirit1 == spirit2 and level1 != SPIRIT_LEGEND and level2 != SPIRIT_LEGEND:
+                    next_spirit = current.__reserved_spirits.pop(0)
+                    if level1 >= level2:
+                        current.__spirits[0] = current.upgrade_spirit(current.__spirits[0])
+                        current.__spirits[1] = next_spirit
+                    else:
+                        current.__spirits[1] = current.upgrade_spirit(current.__spirits[1])
+                        current.__spirits[0] = next_spirit
+                    queue.append(current.clone())
+                else:
+                    yield current
 
     def special_block_cases(self):
         for block in (BLOCK_STATE_REPLACE, BLOCK_STATE_BLESS, BLOCK_STATE_ADDITION, BLOCK_STATE_MISTERY, BLOCK_STATE_EXTENTION, BLOCK_STATE_REPLICATION):
@@ -649,13 +688,17 @@ class simulator:
             yield self
             return
         
-        for x1 in (self.restore_cases() if (block_flags & BLOCK_STATE_DISTORTION) == BLOCK_STATE_DISTORTION else (self.clone(),)):
-            for x2 in x1.spirit_change_cases(active_spirit):
-                for x3 in x2.special_block_cases():
-                    yield x3
+        for x in (x3 for x1 in (self.restore_cases() if (block_flags & BLOCK_STATE_DISTORTION) == BLOCK_STATE_DISTORTION else (self.clone(),))
+                for x2 in x1.spirit_change_cases(active_spirit)
+                for x3 in x2.special_block_cases()):
+            yield x
 
     def success(self):
-        return not any(self.alives(self.__blocks))
+        alives = list(self.alives(self.__blocks))
+        if alives:
+            return False
+        
+        return True
 
     def failed(self):
         return not self.success() and self.__summon_chance == 0
@@ -664,10 +707,16 @@ class simulator:
         return simulator(self.__blocks, self.__spirits, self.__reserved_spirits, self.__summon_chance, self.__change_chance)
     
     def prob(self):
+        key = self.key()
+        if key in DP:
+            return DP[key]
+        
         if self.failed():
+            DP[key] = None, 0.0
             return None, 0.0
         
         if self.success():
+            DP[key] = None, 0.0
             return None, 1.0
         
         active_spirit = self.__spirits[0]
@@ -705,11 +754,14 @@ class simulator:
                 result[f'{active_spirit}/{n}'] = final_prob
         
         max_key = max(result, key=result.get)
-        return max_key, result[max_key]
+        DP[key] = (max_key, result[max_key])
+        print(f'updated dp (count : {len(DP)})')
+        return DP[key]
             
 if __name__ == '__main__':
-    ist = simulator(BLOCKS, ['shock_wave', 'world_tree'], None, 7, 3)
-    print(ist.prob())
+    ist = simulator(BLOCKS, None, None, 7, 3)
+    spirit, n = ist.prob()
+    print(spirit, n)
     # count = 0
     # while True:
     #     count = count + 1
