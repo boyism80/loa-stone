@@ -90,6 +90,7 @@ class simulator:
             BLOCK_STATE_REPLICATION: self.BLOCK_STATE_REPLICATION_callback
         }
         self.__queue = []
+        self.spirit_sort()
     
     def key(self):
         block_key = ','.join(f'{BLOCK_KEYS[x]}' for x in self.__blocks)
@@ -262,12 +263,12 @@ class simulator:
     def random_spirit(self):
         return random.choice(self.random_spirit_candidates())
     
-    def spirit_change(self, spirit, next_spirit=None, free=False):
-        i = 0 if spirit is self.__spirits[0] else 1
-        while True:
-            self.__spirits[i] = self.__reserved_spirits[0]
-            self.__reserved_spirits = [*self.__reserved_spirits[1:], next_spirit if next_spirit is not None else self.random_spirit()]
+    def spirit_sort(self, on_reserved_spirit=None):
+        if on_reserved_spirit is None:
+            on_reserved_spirit = self.random_spirit
 
+        is_sorted = False
+        while True:
             spirit1, level1 = self.root_spirit(self.__spirits[0])
             spirit2, level2 = self.root_spirit(self.__spirits[1])
             if spirit1 == spirit2 and level1 != SPIRIT_LEGEND and level2 != SPIRIT_LEGEND:
@@ -276,8 +277,21 @@ class simulator:
                 else:
                     self.__spirits[0] = self.upgrade_spirit(self.__spirits[1])
                 i = 1
+
+                self.__spirits[i] = self.__reserved_spirits[0]
+                self.__reserved_spirits = [*self.__reserved_spirits[1:], on_reserved_spirit()]
+                is_sorted = True
             else:
                 break
+        return is_sorted
+    
+    def spirit_change(self, spirit, free=False):
+        i = 0 if spirit is self.__spirits[0] else 1
+        self.__spirits[i] = self.__reserved_spirits[0]
+        self.__reserved_spirits = [*self.__reserved_spirits[1:], self.random_spirit()]
+        
+        self.spirit_sort()
+
         if not free:
             self.__change_chance = self.__change_chance - 1
     
@@ -679,7 +693,7 @@ class simulator:
         self.__blocks[i] = t
 
     
-    def next(self, destroy_index, active_spirit, block_flags):
+    def next(self, active_spirit, block_flags):
         if self.success():
             yield self
             return
@@ -719,12 +733,22 @@ class simulator:
             DP[key] = None, 0.0
             return None, 1.0
         
-        active_spirit = self.__spirits[0]
-        _, spirit_type = self.root_spirit(active_spirit)
-        fn = self.__spirit_maps[active_spirit]
         result = {}
+        if self.__change_chance > 0:
+            for active_spirit in self.__spirits:
+                for next_ist in self.spirit_change_cases(active_spirit):
+                    final_prob = 0
+                    next_ist.__change_chance = next_ist.__change_chance - 1
+                    for ist in next_ist.next(active_spirit, 0):
+                        _, prob = ist.prob()
+                        final_prob = final_prob + prob
+                    result[f'{active_spirit}/change'] = final_prob
+
         for active_spirit in self.__spirits:
-            for n in (i for i, x in enumerate(self.__blocks) if x != BLOCK_STATE_DESTROY):
+            _, spirit_type = self.root_spirit(active_spirit)
+            fn = self.__spirit_maps[active_spirit]
+
+            for n in range(len(self.__blocks)):
                 actions = [{'index': i, 'probability': p, 'spirit type': t} for i, p, t in fn(self.__blocks, self.position(n)) if i is not None]
                 states = list(product(range(2), repeat=len(actions)))
                 for state in states:
@@ -745,9 +769,7 @@ class simulator:
                     
                     next_ist.__summon_chance = next_ist.__summon_chance - 1
 
-                    # consume summon chance (static)
-                    # replace spirit, apply block flag, replace special block (random case)
-                    for ist in next_ist.next(n, active_spirit, block_flags):
+                    for ist in next_ist.next(active_spirit, block_flags):
                         _, prob = ist.prob()
                         final_prob = final_prob + probability_of_state * prob
                 
